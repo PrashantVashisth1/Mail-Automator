@@ -1,7 +1,16 @@
 import { useState } from 'react';
 import { api } from '../api.js';
 
-const blank = { name: '', subject: '', body: '' };
+const blank = { name: '', subject: '', body: '', resumeName: '' };
+const MAX_RESUME_BYTES = 2 * 1024 * 1024;
+
+const toBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1]);
+    r.onerror = () => reject(new Error('Could not read file'));
+    r.readAsDataURL(file);
+  });
 
 export default function TemplateManager({ templates, onChange }) {
   const [editingId, setEditingId] = useState(null); // null = nothing, 'new' = creating
@@ -10,15 +19,29 @@ export default function TemplateManager({ templates, onChange }) {
 
   const startEdit = (t) => {
     setEditingId(t ? t._id : 'new');
-    setDraft(t ? { name: t.name, subject: t.subject, body: t.body } : blank);
+    setDraft(t ? { name: t.name, subject: t.subject, body: t.body, resumeName: t.resumeName || '' } : blank);
     setError('');
   };
+
+  const pickResume = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf') return setError('Resume must be a PDF file');
+    if (file.size > MAX_RESUME_BYTES) return setError('Resume must be under 2 MB');
+    setError('');
+    setDraft({ ...draft, resumeBase64: await toBase64(file), resumeName: file.name, removeResume: false });
+  };
+
+  const removeResume = () =>
+    setDraft({ ...draft, resumeBase64: undefined, resumeName: '', removeResume: true });
 
   const save = async (e) => {
     e.preventDefault();
     try {
-      if (editingId === 'new') await api.createTemplate(draft);
-      else await api.updateTemplate(editingId, draft);
+      const { resumeName, ...rest } = draft;
+      const payload = draft.resumeBase64 ? { ...rest, resumeName } : rest;
+      if (editingId === 'new') await api.createTemplate(payload);
+      else await api.updateTemplate(editingId, payload);
       setEditingId(null);
       onChange();
     } catch (err) {
@@ -58,6 +81,16 @@ export default function TemplateManager({ templates, onChange }) {
               Body
               <textarea name="body" rows={16} value={draft.body} onChange={update} required />
             </label>
+            <label>
+              Resume for this role (PDF, max 2 MB)
+              <input type="file" accept="application/pdf" onChange={pickResume} />
+            </label>
+            {draft.resumeName && (
+              <div className="muted small">
+                📎 {draft.resumeName}{' '}
+                <button type="button" className="btn danger sm" onClick={removeResume}>Remove</button>
+              </div>
+            )}
             {error && <div className="alert error">{error}</div>}
             <div className="actions">
               <button type="button" className="btn ghost" onClick={() => setEditingId(null)}>
@@ -76,6 +109,7 @@ export default function TemplateManager({ templates, onChange }) {
                   <div>
                     <strong>{t.name}</strong>
                     <div className="muted small">{t.subject}</div>
+                    <div className="muted small">{t.resumeName ? `📎 ${t.resumeName}` : 'No resume (uses default)'}</div>
                   </div>
                   <div className="row-actions">
                     <button className="btn outline sm" onClick={() => startEdit(t)}>Edit</button>

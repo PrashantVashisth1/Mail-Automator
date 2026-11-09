@@ -1,0 +1,301 @@
+diff --git a/client/src/components/SendForm.jsx b/client/src/components/SendForm.jsx
+index 243e0f9..ca4f97e 100644
+--- a/client/src/components/SendForm.jsx
++++ b/client/src/components/SendForm.jsx
+@@ -72,7 +72,9 @@ export default function SendForm({ templates, config, onOpenHistory }) {
+               <span className="muted">Subject:</span> <strong>{fill(template.subject, vars)}</strong>
+             </div>
+             <pre>{fill(template.body, vars)}</pre>
+-            {config?.resumeAttached && <div className="attach">📎 Resume will be attached</div>}
++            {(template.resumeName || config?.resumeAttached) && (
++              <div className="attach">📎 {template.resumeName || 'Default resume'} will be attached</div>
++            )}
+           </div>
+         )}
+ 
+diff --git a/client/src/components/TemplateManager.jsx b/client/src/components/TemplateManager.jsx
+index f5bdd38..ba876b3 100644
+--- a/client/src/components/TemplateManager.jsx
++++ b/client/src/components/TemplateManager.jsx
+@@ -1,7 +1,16 @@
+ import { useState } from 'react';
+ import { api } from '../api.js';
+ 
+-const blank = { name: '', subject: '', body: '' };
++const blank = { name: '', subject: '', body: '', resumeName: '' };
++const MAX_RESUME_BYTES = 2 * 1024 * 1024;
++
++const toBase64 = (file) =>
++  new Promise((resolve, reject) => {
++    const r = new FileReader();
++    r.onload = () => resolve(String(r.result).split(',')[1]);
++    r.onerror = () => reject(new Error('Could not read file'));
++    r.readAsDataURL(file);
++  });
+ 
+ export default function TemplateManager({ templates, onChange }) {
+   const [editingId, setEditingId] = useState(null); // null = nothing, 'new' = creating
+@@ -10,15 +19,29 @@ export default function TemplateManager({ templates, onChange }) {
+ 
+   const startEdit = (t) => {
+     setEditingId(t ? t._id : 'new');
+-    setDraft(t ? { name: t.name, subject: t.subject, body: t.body } : blank);
++    setDraft(t ? { name: t.name, subject: t.subject, body: t.body, resumeName: t.resumeName || '' } : blank);
++    setError('');
++  };
++
++  const pickResume = async (e) => {
++    const file = e.target.files?.[0];
++    if (!file) return;
++    if (file.type !== 'application/pdf') return setError('Resume must be a PDF file');
++    if (file.size > MAX_RESUME_BYTES) return setError('Resume must be under 2 MB');
+     setError('');
++    setDraft({ ...draft, resumeBase64: await toBase64(file), resumeName: file.name, removeResume: false });
+   };
+ 
++  const removeResume = () =>
++    setDraft({ ...draft, resumeBase64: undefined, resumeName: '', removeResume: true });
++
+   const save = async (e) => {
+     e.preventDefault();
+     try {
+-      if (editingId === 'new') await api.createTemplate(draft);
+-      else await api.updateTemplate(editingId, draft);
++      const { resumeName, ...rest } = draft;
++      const payload = draft.resumeBase64 ? { ...rest, resumeName } : rest;
++      if (editingId === 'new') await api.createTemplate(payload);
++      else await api.updateTemplate(editingId, payload);
+       setEditingId(null);
+       onChange();
+     } catch (err) {
+@@ -58,6 +81,16 @@ export default function TemplateManager({ templates, onChange }) {
+               Body
+               <textarea name="body" rows={16} value={draft.body} onChange={update} required />
+             </label>
++            <label>
++              Resume for this role (PDF, max 2 MB)
++              <input type="file" accept="application/pdf" onChange={pickResume} />
++            </label>
++            {draft.resumeName && (
++              <div className="muted small">
++                📎 {draft.resumeName}{' '}
++                <button type="button" className="btn danger sm" onClick={removeResume}>Remove</button>
++              </div>
++            )}
+             {error && <div className="alert error">{error}</div>}
+             <div className="actions">
+               <button type="button" className="btn ghost" onClick={() => setEditingId(null)}>
+@@ -76,6 +109,7 @@ export default function TemplateManager({ templates, onChange }) {
+                   <div>
+                     <strong>{t.name}</strong>
+                     <div className="muted small">{t.subject}</div>
++                    <div className="muted small">{t.resumeName ? `📎 ${t.resumeName}` : 'No resume (uses default)'}</div>
+                   </div>
+                   <div className="row-actions">
+                     <button className="btn outline sm" onClick={() => startEdit(t)}>Edit</button>
+diff --git a/server/.env.example b/server/.env.example
+index 92719d1..8dab6ae 100644
+--- a/server/.env.example
++++ b/server/.env.example
+@@ -1,13 +1,14 @@
+ PORT=5001
+-MONGO_URI=mongodb+srv://amanbhaskar16_db_user:GsI4RGBuwaufPW6N@cluster0.ch2enxe.mongodb.net/?appName=Cluster0
++MONGO_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?appName=Cluster0
+ 
+ # Your personal Gmail and a 16-character Google App Password
+ # (Google Account -> Security -> 2-Step Verification -> App passwords)
+-GMAIL_USER=amanbhaskar16@gmail.com
+-GMAIL_APP_PASSWORD=mrvushbwakgemdhm
++GMAIL_USER=you@gmail.com
++GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx
+ 
+ # Name shown as sender and used for {{senderName}} in templates
+-SENDER_NAME=Aman Bhaskar
++SENDER_NAME=Your Name
+ 
+-# Optional: absolute path to your resume PDF, attached to every mail
+-RESUME_PATH=" https://drive.google.com/file/d/1UPrUJnRd43yCAzLu5Kf7Z2QuZzXpQw-N/view"
++# Optional FALLBACK resume, used only for templates that have no resume uploaded.
++# A local absolute path, or a public Google Drive share link. No quotes/spaces needed.
++# RESUME_PATH=
+diff --git a/server/index.js b/server/index.js
+index a47ab09..5d03571 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -51,7 +51,7 @@ import { seedTemplates } from './seed.js';
+ const app = express();
+ 
+ app.use(cors());
+-app.use(express.json());
++app.use(express.json({ limit: '4mb' }));
+ 
+ let databaseReady;
+ 
+diff --git a/server/models/Template.js b/server/models/Template.js
+index ce322a8..ce05cd6 100644
+--- a/server/models/Template.js
++++ b/server/models/Template.js
+@@ -5,6 +5,9 @@ const templateSchema = new mongoose.Schema(
+     name: { type: String, required: true, trim: true, unique: true },
+     subject: { type: String, required: true },
+     body: { type: String, required: true },
++    // Dedicated resume for this template (role-specific). Optional.
++    resumeName: { type: String, default: '' },
++    resumeData: { type: Buffer, select: false },
+   },
+   { timestamps: true }
+ );
+diff --git a/server/routes/email.js b/server/routes/email.js
+index e154c66..f178443 100644
+--- a/server/routes/email.js
++++ b/server/routes/email.js
+@@ -1,10 +1,9 @@
+ import { Router } from 'express';
+-import fs from 'fs';
+-import path from 'path';
+ import Template from '../models/Template.js';
+ import EmailLog from '../models/EmailLog.js';
+ import { fill, toHtml } from '../utils/render.js';
+ import { getTransporter } from '../utils/mailer.js';
++import { loadGlobalResume } from '../utils/resume.js';
+ 
+ const router = Router();
+ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+@@ -22,20 +21,28 @@ router.post('/send', async (req, res) => {
+     return res.status(400).json({ error: 'Invalid email address' });
+   }
+ 
+-  const template = await Template.findById(templateId);
++  const template = await Template.findById(templateId).select('+resumeData');
+   if (!template) return res.status(404).json({ error: 'Template not found' });
+ 
+   const vars = { hrName, companyName, senderName: process.env.SENDER_NAME || '' };
+   const subject = fill(template.subject, vars);
+   const text = fill(template.body, vars);
+ 
++  // Role-specific resume first, global RESUME_PATH as fallback.
+   const attachments = [];
+-  const resumePath = process.env.RESUME_PATH;
+-  if (resumePath) {
+-    if (!fs.existsSync(resumePath)) {
+-      return res.status(500).json({ error: `Resume not found at RESUME_PATH: ${resumePath}` });
++  try {
++    if (template.resumeData?.length) {
++      attachments.push({
++        filename: template.resumeName || 'Resume.pdf',
++        content: template.resumeData,
++        contentType: 'application/pdf',
++      });
++    } else {
++      const fallback = await loadGlobalResume();
++      if (fallback) attachments.push(fallback);
+     }
+-    attachments.push({ filename: path.basename(resumePath), path: resumePath });
++  } catch (err) {
++    return res.status(500).json({ error: err.message });
+   }
+ 
+   const log = { hrName, companyName, email, templateName: template.name, subject };
+diff --git a/server/routes/templates.js b/server/routes/templates.js
+index fa82796..d2b7864 100644
+--- a/server/routes/templates.js
++++ b/server/routes/templates.js
+@@ -2,10 +2,28 @@ import { Router } from 'express';
+ import Template from '../models/Template.js';
+ 
+ const router = Router();
++const MAX_RESUME_BYTES = 2 * 1024 * 1024; // keep under Vercel's 4.5MB body limit (base64 adds ~33%)
++
++// Never send the PDF bytes back to the client.
++const pub = (t) => {
++  const o = t.toObject();
++  delete o.resumeData;
++  return o;
++};
++
++// Turns { resumeBase64, resumeName, removeResume } from the request into DB fields.
++function resumeFields({ resumeBase64, resumeName, removeResume }) {
++  if (removeResume) return { resumeName: '', resumeData: undefined, unset: true };
++  if (!resumeBase64) return {};
++  const data = Buffer.from(resumeBase64, 'base64');
++  if (data.length > MAX_RESUME_BYTES) throw new Error('Resume must be under 2 MB');
++  if (data.subarray(0, 4).toString() !== '%PDF') throw new Error('Resume must be a PDF file');
++  return { resumeName: resumeName || 'Resume.pdf', resumeData: data };
++}
+ 
+ router.get('/', async (req, res) => {
+   const templates = await Template.find().sort({ createdAt: 1 });
+-  res.json(templates);
++  res.json(templates.map(pub));
+ });
+ 
+ router.post('/', async (req, res) => {
+@@ -14,8 +32,9 @@ router.post('/', async (req, res) => {
+     return res.status(400).json({ error: 'name, subject and body are required' });
+   }
+   try {
+-    const template = await Template.create({ name, subject, body });
+-    res.status(201).json(template);
++    const { unset, ...resume } = resumeFields(req.body);
++    const template = await Template.create({ name, subject, body, ...resume });
++    res.status(201).json(pub(template));
+   } catch (err) {
+     const msg = err.code === 11000 ? 'A template with this name already exists' : err.message;
+     res.status(400).json({ error: msg });
+@@ -25,13 +44,20 @@ router.post('/', async (req, res) => {
+ router.put('/:id', async (req, res) => {
+   const { name, subject, body } = req.body;
+   try {
+-    const template = await Template.findByIdAndUpdate(
+-      req.params.id,
+-      { name, subject, body },
+-      { new: true, runValidators: true }
+-    );
++    const { unset, ...resume } = resumeFields(req.body);
++    const update = { $set: { name, subject, body } };
++    if (unset) {
++      update.$set.resumeName = '';
++      update.$unset = { resumeData: 1 };
++    } else {
++      Object.assign(update.$set, resume);
++    }
++    const template = await Template.findByIdAndUpdate(req.params.id, update, {
++      new: true,
++      runValidators: true,
++    });
+     if (!template) return res.status(404).json({ error: 'Template not found' });
+-    res.json(template);
++    res.json(pub(template));
+   } catch (err) {
+     const msg = err.code === 11000 ? 'A template with this name already exists' : err.message;
+     res.status(400).json({ error: msg });
+diff --git a/server/utils/resume.js b/server/utils/resume.js
+new file mode 100644
+index 0000000..13b6227
+--- /dev/null
++++ b/server/utils/resume.js
+@@ -0,0 +1,24 @@
++import fs from 'fs';
++import path from 'path';
++
++// Accepts a local path OR a Google Drive / direct http(s) link.
++// Used only as a fallback when a template has no resume uploaded.
++export async function loadGlobalResume() {
++  const raw = (process.env.RESUME_PATH || '').trim().replace(/^["']|["']$/g, '').trim();
++  if (!raw) return null;
++
++  if (/^https?:\/\//i.test(raw)) {
++    const driveId = raw.match(/\/d\/([\w-]+)/)?.[1] || raw.match(/[?&]id=([\w-]+)/)?.[1];
++    const url = driveId ? `https://drive.google.com/uc?export=download&id=${driveId}` : raw;
++    const res = await fetch(url, { redirect: 'follow' });
++    if (!res.ok) throw new Error(`Could not download resume (${res.status})`);
++    const type = res.headers.get('content-type') || '';
++    if (type.includes('text/html')) {
++      throw new Error('Resume link is not public. Share it as "Anyone with the link" or upload a PDF to the template.');
++    }
++    return { filename: 'Resume.pdf', content: Buffer.from(await res.arrayBuffer()) };
++  }
++
++  if (!fs.existsSync(raw)) throw new Error(`Resume not found at RESUME_PATH: ${raw}`);
++  return { filename: path.basename(raw), path: raw };
++}

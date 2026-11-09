@@ -72,7 +72,9 @@ export default function SendForm({ templates, config, onOpenHistory }) {
               <span className="muted">Subject:</span> <strong>{fill(template.subject, vars)}</strong>
             </div>
             <pre>{fill(template.body, vars)}</pre>
-            {config?.resumeAttached && <div className="attach">📎 Resume will be attached</div>}
+            {(template.resumeName || config?.resumeAttached) && (
+              <div className="attach">📎 {template.resumeName || 'Default resume'} will be attached</div>
+            )}
           </div>
         )}
 

@@ -30,3 +30,10 @@ Six starter templates (Frontend, Backend, Full Stack, SDE, Internship, Referral)
 time the server starts. Edit them or add your own under **Manage Templates**.
 
 Placeholders you can use in subject and body: `{{hrName}}`, `{{companyName}}`, `{{senderName}}`.
+
+## Resume attachment
+
+Set `RESUME_PATH` in the deployed server's environment variables to either an absolute path to a
+resume file included with the server, or an HTTPS download URL. Google Drive `/file/d/.../view`
+links are supported when the file's General access is set to **Anyone with the link**. After
+changing the variable or deploying a new resume, redeploy/restart the backend.
