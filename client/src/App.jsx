@@ -7,6 +7,9 @@ import FollowUps from './components/FollowUps.jsx';
 import TemplateManager from './components/TemplateManager.jsx';
 import Settings from './components/Settings.jsx';
 import HistoryModal from './components/HistoryModal.jsx';
+import Privacy from './components/Privacy.jsx';
+
+const isPrivacyPage = window.location.pathname.replace(/\/+$/, '') === '/privacy';
 
 // Read once: Google sends the user back with ?authError=... when sign-in fails.
 const authError = new URLSearchParams(window.location.search).get('authError');
@@ -21,6 +24,10 @@ const TABS = [
 ];
 
 export default function App() {
+  return isPrivacyPage ? <Privacy /> : <MainApp />;
+}
+
+function MainApp() {
   const [me, setMe] = useState(undefined); // undefined = loading, null = signed out
   const [templates, setTemplates] = useState([]);
   const [view, setView] = useState('send');
@@ -72,7 +79,7 @@ export default function App() {
   return (
     <div className="page">
       <header className="topbar">
-        <div className="brand">✉️ Cold Mail Sender</div>
+        <div className="brand">✉️ Mail Automator</div>
         <div className="user">
           {me.picture && <img src={me.picture} alt="" referrerPolicy="no-referrer" />}
           <span className="user-email">{me.email}</span>

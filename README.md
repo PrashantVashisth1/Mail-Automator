@@ -73,7 +73,7 @@ Open http://localhost:5173, sign in with Google, then set your name and default 
 
 | Variable | What it does |
 |---|---|
-| `SERVER_URL`, `CLIENT_URL` | Where the API and web app run. Used for the Google redirect and cookies |
+| `SERVER_URL`, `CLIENT_URL` | Where the API and web app run. Used for the Google redirect and cookies. In production both are the Vercel URL |
 | `JWT_SECRET` | Signs the login cookie |
 | `TOKEN_ENCRYPTION_KEY` | 64 hex chars. Encrypts Google tokens in MongoDB. Changing it signs everyone out |
 | `DAILY_SEND_LIMIT` | Max successful emails per user per day (default 50) |
@@ -95,15 +95,34 @@ Bulk worker (inside the server): every few seconds sends the next queued CSV row
 - Google refresh tokens are encrypted with AES-256-GCM before they are saved.
 - Every database query is filtered by the signed-in user's id.
 
-## Deploying
+## Deploying (free: MongoDB Atlas + Render + Vercel)
 
-- The CSV bulk sender runs inside the server process, so the backend must be an always-on server
-  (for example Render or Railway), not serverless functions. Run **one** instance.
-- Set `SERVER_URL`/`CLIENT_URL` to the real URLs and add
-  `<SERVER_URL>/api/auth/google/callback` as a redirect URI in Google Cloud.
-- If the client and API are on different domains, cookies are sent as `SameSite=None; Secure`, which
-  some browsers block. Serving the API under the same domain as the client (a rewrite of `/api` to
-  the backend) avoids this.
+The browser only ever talks to the Vercel domain. Vercel forwards `/api/*` to the backend on Render
+(see `client/vercel.json`), so the login cookie is first-party and isn't blocked by browsers like
+Brave or Safari.
+
+1. **MongoDB Atlas**: create a free M0 cluster, a database user (letters and numbers only in the
+   password), allow network access from `0.0.0.0/0`, and copy the connection string. Add the database
+   name before the `?`, e.g. `...mongodb.net/mail-automator?retryWrites=true`.
+2. **Render** → New → Web Service → this repo.
+   - Name `mail-automator-api` (the URL becomes `https://mail-automator-api.onrender.com`; if the
+     name is taken, put your URL in `client/vercel.json`).
+   - Root directory `server`, build `npm install`, start `npm start`, one instance.
+   - Environment variables: everything from `server/.env.example`, with `MONGO_URI` from Atlas and
+     `SERVER_URL` = `CLIENT_URL` = your Vercel URL (step 3).
+   - Free instances sleep after 15 minutes without traffic; bulk sends pause until the next visit.
+3. **Vercel** → Add New → Project → this repo. Root directory `client`, framework Vite. Optionally set
+   `VITE_CONTACT_EMAIL` (shown on the privacy page). Do **not** set `VITE_API_URL`.
+4. **Google Cloud**:
+   - Clients → your client → add redirect URI `https://<your-app>.vercel.app/api/auth/google/callback`.
+   - Branding → home page `https://<your-app>.vercel.app`, privacy policy
+     `https://<your-app>.vercel.app/privacy`, authorized domain `<your-app>.vercel.app`.
+   - Audience → **Publish app**. Anyone with a Google account can then sign in after clicking through
+     the "unverified app" screen, up to 100 users until the app passes Google verification.
+5. Open the Vercel URL, sign in, and send yourself a test email.
+
+The CSV bulk sender runs inside the server process, so run exactly **one** backend instance on an
+always-on host (not serverless functions).
 
 ## Docs
 

@@ -32,7 +32,7 @@ export const config = {
   get dryRun() {
     return process.env.MAIL_DRY_RUN === 'true';
   },
-  // Deployed over HTTPS (client and server on different domains) needs Secure + SameSite=None cookies.
+  // Deployed over HTTPS: mark cookies Secure so they are never sent over plain HTTP.
   get secureCookies() {
     return this.serverUrl.startsWith('https://');
   },

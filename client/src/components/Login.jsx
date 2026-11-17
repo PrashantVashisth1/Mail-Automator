@@ -16,7 +16,7 @@ export default function Login({ error }) {
     <div className="page narrow">
       <header className="hero">
         <div className="logo">✉️</div>
-        <h1>Cold Mail Sender</h1>
+        <h1>Mail Automator</h1>
         <p className="muted">Send personalised job-application emails to HRs from your own Gmail</p>
         <div className="divider" />
       </header>
@@ -36,8 +36,15 @@ export default function Login({ error }) {
           <p className="note">
             We only ask permission to <strong>send</strong> emails from your Gmail. The app can't read your inbox.
           </p>
+          <div className="alert info small-alert">
+            <strong>First time?</strong> Google may show "Google hasn't verified this app" because the app is new.
+            Click <strong>Advanced → Go to Mail Automator</strong>, then tick <strong>"Send email on your behalf"</strong>.
+          </div>
         </div>
       </div>
+      <p className="note">
+        <a href="/privacy">Privacy Policy</a>
+      </p>
     </div>
   );
 }

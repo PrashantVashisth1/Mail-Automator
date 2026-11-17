@@ -1,3 +1,6 @@
+// Empty = same domain as the web app. In production Vercel forwards /api/* to the backend
+// (client/vercel.json), so the browser sees one domain and the login cookie isn't blocked.
+// Locally, client/.env sets VITE_API_URL=http://localhost:5001.
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 
 // Carries the server's error code (e.g. 'DUPLICATE', 'DAILY_LIMIT', 'GMAIL_RECONNECT') and extra
@@ -18,10 +21,6 @@ export const setAuthHandler = (fn) => {
 };
 
 async function request(url, options = {}) {
-  if (import.meta.env.PROD && !API_BASE_URL) {
-    throw new Error('VITE_API_URL is not set for this deployment.');
-  }
-
   const res = await fetch(`${API_BASE_URL}${url}`, {
     credentials: 'include', // send the session cookie
     headers: { 'Content-Type': 'application/json' },
@@ -30,7 +29,7 @@ async function request(url, options = {}) {
   const contentType = res.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
     throw new ApiError(
-      `API returned a non-JSON response (${res.status}). Check that the backend is running and VITE_API_URL points to it.`,
+      `API returned a non-JSON response (${res.status}). Check that the backend is running and reachable.`,
       res.status
     );
   }

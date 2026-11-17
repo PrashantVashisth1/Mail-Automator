@@ -233,3 +233,11 @@ select.outcome.rejected { background: var(--error-bg); color: var(--error); }
   padding: 12px; background: #fff; color: var(--text); border-color: var(--border);
 }
 .btn.google:hover { background: #f6f8fc; }
+
+/* Privacy policy */
+.legal { font-size: 14px; line-height: 1.65; }
+.legal h3 { font-size: 15px; margin: 22px 0 6px; }
+.legal ul { padding-left: 20px; margin: 6px 0; }
+.legal li { margin: 4px 0; }
+.legal a, .note a { color: var(--primary); }
+.back-link { margin-top: 24px; }

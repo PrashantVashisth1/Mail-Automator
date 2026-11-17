@@ -17,12 +17,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const redirectUri = () => `${config.serverUrl}/api/auth/google/callback`;
 
-// httpOnly: page JavaScript can't read the cookie. Lax is enough on localhost; a deployed
-// client and server on different domains need SameSite=None + Secure.
+// httpOnly: page JavaScript can't read the cookie. Secure: only sent over HTTPS when deployed.
+// SameSite=Lax works because the browser always talks to one domain (locally localhost; in
+// production Vercel forwards /api to the backend), and Google's redirect back is a normal
+// top-level navigation, which Lax cookies are sent with.
 export const baseCookie = () => ({
   httpOnly: true,
   secure: config.secureCookies,
-  sameSite: config.secureCookies ? 'none' : 'lax',
+  sameSite: 'lax',
   path: '/',
 });
 
