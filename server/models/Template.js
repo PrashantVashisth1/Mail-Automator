@@ -2,7 +2,8 @@ import mongoose from 'mongoose';
 
 const templateSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true, trim: true, unique: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    name: { type: String, required: true, trim: true },
     subject: { type: String, required: true },
     body: { type: String, required: true },
     // Dedicated resume for this template (role-specific). Optional.
@@ -11,5 +12,8 @@ const templateSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Template names are unique per user, not across all users (PRD US-03).
+templateSchema.index({ userId: 1, name: 1 }, { unique: true });
 
 export default mongoose.model('Template', templateSchema);

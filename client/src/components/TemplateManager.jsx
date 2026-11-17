@@ -1,16 +1,8 @@
 import { useState } from 'react';
 import { api } from '../api.js';
+import { MAX_RESUME_BYTES, toBase64 } from '../helpers.js';
 
 const blank = { name: '', subject: '', body: '', resumeName: '' };
-const MAX_RESUME_BYTES = 2 * 1024 * 1024;
-
-const toBase64 = (file) =>
-  new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result).split(',')[1]);
-    r.onerror = () => reject(new Error('Could not read file'));
-    r.readAsDataURL(file);
-  });
 
 export default function TemplateManager({ templates, onChange }) {
   const [editingId, setEditingId] = useState(null); // null = nothing, 'new' = creating
@@ -51,8 +43,12 @@ export default function TemplateManager({ templates, onChange }) {
 
   const remove = async (t) => {
     if (!confirm(`Delete template "${t.name}"?`)) return;
-    await api.deleteTemplate(t._id);
-    onChange();
+    try {
+      await api.deleteTemplate(t._id);
+      onChange();
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   const update = (e) => setDraft({ ...draft, [e.target.name]: e.target.value });
@@ -103,13 +99,14 @@ export default function TemplateManager({ templates, onChange }) {
           </form>
         ) : (
           <>
+            {error && <div className="alert error">{error}</div>}
             <ul className="tpl-list">
               {templates.map((t) => (
                 <li key={t._id}>
                   <div>
                     <strong>{t.name}</strong>
                     <div className="muted small">{t.subject}</div>
-                    <div className="muted small">{t.resumeName ? `📎 ${t.resumeName}` : 'No resume (uses default)'}</div>
+                    <div className="muted small">{t.resumeName ? `📎 ${t.resumeName}` : 'No resume (uses your default from Settings)'}</div>
                   </div>
                   <div className="row-actions">
                     <button className="btn outline sm" onClick={() => startEdit(t)}>Edit</button>

@@ -95,12 +95,24 @@ Thanks a lot for your time and help.
 Best regards,
 {{senderName}}`,
   },
+  {
+    // Used by "Send follow-up". The subject is replaced with "Re: <original subject>" when sending.
+    name: 'Follow-up',
+    subject: 'Following up on my application at {{companyName}}',
+    body: `Hi {{hrName}},
+
+I hope you are doing well. I wanted to follow up on my previous email about opportunities at {{companyName}}.
+
+I am still very interested and would be grateful for any update, or for a pointer to the right person to speak with.
+
+Thank you for your time.
+
+Best regards,
+{{senderName}}`,
+  },
 ];
 
-export async function seedTemplates() {
-  const count = await Template.countDocuments();
-  if (count === 0) {
-    await Template.insertMany(defaults);
-    console.log(`Seeded ${defaults.length} default templates`);
-  }
+// Every new user gets their own copy of the starter templates on first sign-in.
+export async function seedTemplatesForUser(userId) {
+  await Template.insertMany(defaults.map((t) => ({ ...t, userId })));
 }
