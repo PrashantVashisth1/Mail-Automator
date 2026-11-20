@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://mail-automator-api.onrender.com/api/:path*"
+      "destination": "https://mail-automator-api.vercel.app/api/:path*"
     },
     {
       "source": "/(.*)",

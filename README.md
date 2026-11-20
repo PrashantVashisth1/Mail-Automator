@@ -95,35 +95,36 @@ Bulk worker (inside the server): every few seconds sends the next queued CSV row
 - Google refresh tokens are encrypted with AES-256-GCM before they are saved.
 - Every database query is filtered by the signed-in user's id.
 
-## Deploying (free: MongoDB Atlas + Render + Vercel)
+## Deploying (free: MongoDB Atlas + Vercel + cron-job.org)
 
-The browser only ever talks to the Vercel domain. Vercel forwards `/api/*` to the backend on Render
-(see `client/vercel.json`), so the login cookie is first-party and isn't blocked by browsers like
-Brave or Safari.
+Both the web app and the API run on Vercel as two projects. The browser only ever talks to the web
+app's domain; it forwards `/api/*` to the API project (see `client/vercel.json`), so the login cookie
+is first-party and isn't blocked by browsers like Brave or Safari. Serverless functions don't sleep
+or count hours, and nothing runs between requests, so a free cron calls `/api/bulk/tick` every minute
+to send the next CSV email.
 
 1. **MongoDB Atlas**: create a free M0 cluster, a database user (letters and numbers only in the
-   password), allow network access from `0.0.0.0/0`, and copy the connection string. Add the database
-   name before the `?`, e.g. `...mongodb.net/mail-automator?retryWrites=true`.
-2. **Render** → New → Web Service → this repo.
-   - Name `mail-automator-api` (the URL becomes `https://mail-automator-api.onrender.com`; if the
-     name is taken, put your URL in `client/vercel.json`).
-   - Root directory `server`, build `npm install`, start `npm start`, one instance.
-   - Environment variables: everything from `server/.env.example`, with `MONGO_URI` from Atlas and
-     `SERVER_URL` = `CLIENT_URL` = your Vercel URL (step 3).
-   - Free instances sleep after 15 minutes without traffic; bulk sends pause until the next visit.
-3. **Vercel** → Add New → Project → this repo. Root directory `client`, framework Vite. Optionally set
-   `VITE_CONTACT_EMAIL` (shown on the privacy page). Do **not** set `VITE_API_URL`.
-4. **Google Cloud**:
-   - Clients → your client → add redirect URI `https://<your-app>.vercel.app/api/auth/google/callback`.
-   - Branding → home page `https://<your-app>.vercel.app`, privacy policy
-     `https://<your-app>.vercel.app/privacy`, authorized domain `<your-app>.vercel.app`.
+   password), allow network access from `0.0.0.0/0`, and copy the connection string with the
+   database name before the `?`, e.g. `...mongodb.net/mail-automator?retryWrites=true`.
+2. **Vercel, API project** → Add New → Project → this repo. Name `mail-automator-api`, root directory
+   `server`. Environment variables: everything from `server/.env.example`, with `MONGO_URI` from Atlas,
+   `SERVER_URL` = `CLIENT_URL` = the web app's URL (step 3), `BULK_GAP_SECONDS=60` and a random
+   `CRON_SECRET`. If the URL isn't `https://mail-automator-api.vercel.app`, put yours in
+   `client/vercel.json`.
+3. **Vercel, web project** → Add New → Project → same repo. Root directory `client`, framework Vite.
+   Optionally set `VITE_CONTACT_EMAIL`. Do **not** set `VITE_API_URL`.
+4. **cron-job.org**: create a job for `https://<api-project>.vercel.app/api/bulk/tick`, every minute,
+   with the request header `Authorization: Bearer <CRON_SECRET>`.
+5. **Google Cloud**:
+   - Clients → your client → redirect URI `https://<web-app>.vercel.app/api/auth/google/callback`.
+   - Branding → home page `https://<web-app>.vercel.app`, privacy policy
+     `https://<web-app>.vercel.app/privacy`, authorized domain `<web-app>.vercel.app`.
    - Audience → **Publish app**. Anyone with a Google account can then sign in after clicking through
      the "unverified app" screen, up to 100 users until the app passes Google verification.
-5. Open the Vercel URL, sign in, and send yourself a test email.
+6. Open the web app, sign in, and send yourself a test email.
 
-The CSV bulk sender runs inside the server process, so run exactly **one** backend instance on an
-always-on host (not serverless functions).
-
+Running on an always-on server instead (e.g. Render, a VPS)? Then no cron is needed: when `VERCEL` is
+not set, the server starts its own bulk sender loop. Run exactly **one** instance.
 ## Docs
 
 The product requirements for this version are in [docs/PRD.md](docs/PRD.md).

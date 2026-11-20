@@ -60,8 +60,11 @@ async function processJob(job) {
 
 let lastError = ''; // log a repeating error (e.g. MongoDB down) once, not every tick
 
-async function tick(ensureDb) {
-  if (busy) return;
+// One round: send the next row of every job whose gap has passed. Returns how many jobs it touched.
+// Called every few seconds by startBulkWorker on an always-on server, or once per minute by an
+// external cron hitting /api/bulk/tick when the API runs as serverless functions (Vercel).
+export async function runBulkTick(ensureDb) {
+  if (busy) return { skipped: true };
   busy = true;
   try {
     await ensureDb(); // reconnects if MongoDB was not up when the server started
@@ -70,13 +73,17 @@ async function tick(ensureDb) {
       await processJob(job).catch((err) => console.error(`Bulk job ${job._id} error:`, err.message));
     }
     lastError = '';
+    return { processed: jobs.length };
   } catch (err) {
     if (err.message !== lastError) console.error('Bulk worker error:', err.message);
     lastError = err.message;
+    throw err;
   } finally {
     busy = false;
   }
 }
+
+const tick = (ensureDb) => runBulkTick(ensureDb).catch(() => {});
 
 export function startBulkWorker(ensureDb) {
   const everyMs = Math.max(1000, Math.min(5000, config.bulkGapMs));

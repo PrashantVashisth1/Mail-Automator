@@ -11,7 +11,7 @@ import emailRoutes from './routes/email.js';
 import followUpRoutes from './routes/followups.js';
 import bulkRoutes from './routes/bulk.js';
 import { requireAuth } from './middleware/requireAuth.js';
-import { startBulkWorker } from './services/bulkWorker.js';
+import { runBulkTick, startBulkWorker } from './services/bulkWorker.js';
 import { checkConfig, config } from './utils/config.js';
 
 checkConfig(); // stop early with a clear message if server/.env is incomplete
@@ -59,6 +59,16 @@ app.get('/', (req, res) => {
 // Public: Google sign-in.
 app.use('/api/auth', authRoutes);
 
+// Called every minute by an external cron (cron-job.org) when the API runs on Vercel, where
+// nothing runs between requests. Protected by CRON_SECRET: "Authorization: Bearer <secret>".
+app.all('/api/bulk/tick', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (!secret || req.get('authorization') !== `Bearer ${secret}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  res.json({ ok: true, ...(await runBulkTick(connectToDatabase)) });
+});
+
 // Everything below needs a signed-in user.
 app.use('/api', requireAuth);
 app.use('/api/me', meRoutes);
@@ -78,13 +88,17 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(process.env.PORT || 5001, () => {
-  console.log(`Server running on http://localhost:${process.env.PORT || 5001}`);
-});
+// On Vercel (serverless) the platform calls the exported app per request: no listen(), no
+// background timer. Bulk sending is driven by /api/bulk/tick instead.
+if (!process.env.VERCEL) {
+  app.listen(process.env.PORT || 5001, () => {
+    console.log(`Server running on http://localhost:${process.env.PORT || 5001}`);
+  });
 
-// The CSV bulk sender connects to MongoDB itself on each tick, so it works even if the
-// database comes up after the server.
-startBulkWorker(connectToDatabase);
-connectToDatabase().catch((error) => console.error('Could not connect to MongoDB:', error.message));
+  // The CSV bulk sender connects to MongoDB itself on each tick, so it works even if the
+  // database comes up after the server.
+  startBulkWorker(connectToDatabase);
+  connectToDatabase().catch((error) => console.error('Could not connect to MongoDB:', error.message));
+}
 
 export default app;
